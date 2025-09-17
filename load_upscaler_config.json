@@ -45,6 +45,14 @@
       "scale": 4
     },
     {
+      "name": "2x-AnimeSharpV4_Fast_RCAN_PU",
+      "scale": 2
+    },
+    {
+      "name": "2x-AnimeSharpV4_RCAN",
+      "scale": 2
+    },
+    {
       "name": "2x-ESRGAN",
       "scale": 2
     },
