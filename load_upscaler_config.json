@@ -11,7 +11,9 @@
       "4xNomos2_otf_esrgan",
       "4x_UniversalUpscalerV2-Neutral_115000_swaG",
       "4x-ClearRealityV1",
-      "4x-UltraSharpV2_Lite"
+      "4x-UltraSharpV2_Lite",
+      "2x-AnimeSharpV4_Fast_RCAN_PU",
+      "2x-AnimeSharpV4_RCAN"
     ],
     "default": "4x-UltraSharp",
     "tooltip": "These models have been tested with tensorrt. Loaded from config."
