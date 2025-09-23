@@ -22,7 +22,7 @@ logger = ColoredLogger("ComfyUI-Upscaler-Tensorrt")
 
 IMAGE_DIM_MIN = 256
 IMAGE_DIM_OPT = 512
-IMAGE_DIM_MAX = 1280
+IMAGE_DIM_MAX = 1536
 
 # --- Function to determine scaling factor from model name ---
 def get_scale_factor_from_model_name(model_name: str) -> int:
