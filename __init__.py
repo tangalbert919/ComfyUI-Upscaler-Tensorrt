@@ -153,7 +153,7 @@ class LoadUpscalerTensorrtModelBase:
     DESCRIPTION = "Load tensorrt model"
     FUNCTION = "load_upscaler_tensorrt_model"
 
-    def _load_upscaler_tensorrt_model(self, model, precision):
+    def _load_upscaler_tensorrt_model(self, model, precision, batch, height, width):
         tensorrt_models_dir = os.path.join(folder_paths.models_dir, "tensorrt", "upscaler")
         onnx_models_dir = os.path.join(folder_paths.models_dir, "onnx")
 
@@ -163,9 +163,9 @@ class LoadUpscalerTensorrtModelBase:
         onnx_model_path = os.path.join(onnx_models_dir, f"{model}.onnx")
         
         engine_channel = 3
-        engine_min_batch, engine_opt_batch, engine_max_batch = 1, 1, 1
-        engine_min_h, engine_opt_h, engine_max_h = IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX
-        engine_min_w, engine_opt_w, engine_max_w = IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX
+        engine_min_batch, engine_opt_batch, engine_max_batch = batch
+        engine_min_h, engine_opt_h, engine_max_h = height
+        engine_min_w, engine_opt_w, engine_max_w = width
         tensorrt_model_path = os.path.join(tensorrt_models_dir, f"{model}_{precision if not TENSORRT_RTX_AVAILABLE else 'rtx'}_{engine_min_batch}x{engine_channel}x{engine_min_h}x{engine_min_w}_{engine_opt_batch}x{engine_channel}x{engine_opt_h}x{engine_opt_w}_{engine_max_batch}x{engine_channel}x{engine_max_h}x{engine_max_w}_{tensorrt.__version__}.trt")
 
         if not os.path.exists(tensorrt_model_path):
@@ -200,6 +200,70 @@ class LoadUpscalerTensorrtModelBase:
 
         return (engine,)
 
+class LoadUpscalerTensorrtModelAdvanced(LoadUpscalerTensorrtModelBase):
+    def __init__(self):
+        super(LoadUpscalerTensorrtModelAdvanced, self).__init__()
+
+    @classmethod
+    def INPUT_TYPES(cls): # Changed 's' to 'cls' for convention
+        # Use the pre-loaded configuration
+        model_config = LOAD_UPSCALER_NODE_CONFIG.get("model", {})
+        precision_config = LOAD_UPSCALER_NODE_CONFIG.get("precision", {})
+
+        # Provide sensible defaults if keys are missing in the config (though load_node_config handles this broadly)
+        model_options = model_config.get("options", ["4x-UltraSharp"])
+        model_default = model_config.get("default", "4x-UltraSharp")
+        model_tooltip = model_config.get("tooltip", "Select a model.")
+
+        precision_options = precision_config.get("options", ["fp16", "fp32"])
+        precision_default = precision_config.get("default", "fp16")
+        precision_tooltip = precision_config.get("tooltip", "Select precision.")
+
+        # Advanced settings
+        batch_size_defaults = {
+            "default": 1,
+            "min": 1,
+            "max": 100,
+            "step": 1
+        }
+        height_defaults = {
+            "default": IMAGE_DIM_OPT,
+            "min": IMAGE_DIM_MIN,
+            "max": IMAGE_DIM_MAX,
+            "step": 64
+        }
+        width_defaults = {
+            "default": IMAGE_DIM_OPT,
+            "min": IMAGE_DIM_MIN,
+            "max": IMAGE_DIM_MAX,
+            "step": 64
+        }
+
+        return {
+            "required": {
+                "model": (model_options, {"default": model_default, "tooltip": model_tooltip}),
+                "precision": (precision_options, {"default": precision_default, "tooltip": precision_tooltip}),
+                "batch_size_min": ("INT", batch_size_defaults),
+                "batch_size_opt": ("INT", batch_size_defaults),
+                "batch_size_max": ("INT", batch_size_defaults),
+                "height_min": ("INT", height_defaults),
+                "height_opt": ("INT", height_defaults),
+                "height_max": ("INT", height_defaults),
+                "width_min": ("INT", width_defaults),
+                "width_opt": ("INT", width_defaults),
+                "width_max": ("INT", width_defaults),
+            }
+        }
+
+    def load_upscaler_tensorrt_model(self, model, precision, batch_size_min,
+                                     batch_size_opt, batch_size_max, height_min,
+                                     height_opt, height_max, width_min,
+                                     width_opt, width_max):
+        batch = [batch_size_min, batch_size_opt, batch_size_max]
+        height = [height_min, height_opt, height_max]
+        width = [width_min, width_opt, width_max]
+        return super()._load_upscaler_tensorrt_model(model, precision, batch, height, width)
+
 class LoadUpscalerTensorrtModel(LoadUpscalerTensorrtModelBase):
     def __init__(self):
         super(LoadUpscalerTensorrtModel, self).__init__()
@@ -227,16 +291,21 @@ class LoadUpscalerTensorrtModel(LoadUpscalerTensorrtModelBase):
         }
 
     def load_upscaler_tensorrt_model(self, model, precision):
-        return super()._load_upscaler_tensorrt_model(model, precision)
+        batch = [1, 1, 1]
+        height = [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
+        width = [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
+        return super()._load_upscaler_tensorrt_model(model, precision, batch, height, width)
 
 NODE_CLASS_MAPPINGS = {
     "UpscalerTensorrt": UpscalerTensorrt,
     "LoadUpscalerTensorrtModel": LoadUpscalerTensorrtModel,
+    "LoadUpscalerTensorrtAdvanced": LoadUpscalerTensorrtModelAdvanced,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "UpscalerTensorrt": "Upscaler Tensorrt ⚡",
     "LoadUpscalerTensorrtModel": "Load Upscale Tensorrt Model",
+    "LoadUpscalerTensorrtAdvanced": "Load Upscale Tensorrt Model (Advanced)",
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
