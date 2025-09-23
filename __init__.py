@@ -142,37 +142,18 @@ class UpscalerTensorrt:
         logger.info(f"Output shape: {output.shape}")
         return (output,)
 
-class LoadUpscalerTensorrtModel:
+class LoadUpscalerTensorrtModelBase:
     @classmethod
     def INPUT_TYPES(cls): # Changed 's' to 'cls' for convention
-        # Use the pre-loaded configuration
-        model_config = LOAD_UPSCALER_NODE_CONFIG.get("model", {})
-        precision_config = LOAD_UPSCALER_NODE_CONFIG.get("precision", {})
-        
-        # Provide sensible defaults if keys are missing in the config (though load_node_config handles this broadly)
-        model_options = model_config.get("options", ["4x-UltraSharp"])
-        model_default = model_config.get("default", "4x-UltraSharp")
-        model_tooltip = model_config.get("tooltip", "Select a model.")
+        raise NotImplementedError
 
-        precision_options = precision_config.get("options", ["fp16", "fp32"])
-        precision_default = precision_config.get("default", "fp16")
-        precision_tooltip = precision_config.get("tooltip", "Select precision.")
-
-        return {
-            "required": {
-                "model": (model_options, {"default": model_default, "tooltip": model_tooltip}),
-                "precision": (precision_options, {"default": precision_default, "tooltip": precision_tooltip}),
-            }
-        }
-    
     RETURN_NAMES = ("upscaler_trt_model",)
     RETURN_TYPES = ("UPSCALER_TRT_MODEL",)
-    # FUNCTION = "main" # This was duplicated, removing
     CATEGORY = "tensorrt"
-    DESCRIPTION = "Load tensorrt models, they will be built automatically if not found."
-    FUNCTION = "load_upscaler_tensorrt_model" # This is the correct one
-    
-    def load_upscaler_tensorrt_model(self, model, precision):
+    DESCRIPTION = "Load tensorrt model"
+    FUNCTION = "load_upscaler_tensorrt_model"
+
+    def _load_upscaler_tensorrt_model(self, model, precision):
         tensorrt_models_dir = os.path.join(folder_paths.models_dir, "tensorrt", "upscaler")
         onnx_models_dir = os.path.join(folder_paths.models_dir, "onnx")
 
@@ -218,6 +199,35 @@ class LoadUpscalerTensorrtModel:
         engine.model_name = model
 
         return (engine,)
+
+class LoadUpscalerTensorrtModel(LoadUpscalerTensorrtModelBase):
+    def __init__(self):
+        super(LoadUpscalerTensorrtModel, self).__init__()
+
+    @classmethod
+    def INPUT_TYPES(cls): # Changed 's' to 'cls' for convention
+        # Use the pre-loaded configuration
+        model_config = LOAD_UPSCALER_NODE_CONFIG.get("model", {})
+        precision_config = LOAD_UPSCALER_NODE_CONFIG.get("precision", {})
+
+        # Provide sensible defaults if keys are missing in the config (though load_node_config handles this broadly)
+        model_options = model_config.get("options", ["4x-UltraSharp"])
+        model_default = model_config.get("default", "4x-UltraSharp")
+        model_tooltip = model_config.get("tooltip", "Select a model.")
+
+        precision_options = precision_config.get("options", ["fp16", "fp32"])
+        precision_default = precision_config.get("default", "fp16")
+        precision_tooltip = precision_config.get("tooltip", "Select precision.")
+
+        return {
+            "required": {
+                "model": (model_options, {"default": model_default, "tooltip": model_tooltip}),
+                "precision": (precision_options, {"default": precision_default, "tooltip": precision_tooltip}),
+            }
+        }
+
+    def load_upscaler_tensorrt_model(self, model, precision):
+        return super()._load_upscaler_tensorrt_model(model, precision)
 
 NODE_CLASS_MAPPINGS = {
     "UpscalerTensorrt": UpscalerTensorrt,
