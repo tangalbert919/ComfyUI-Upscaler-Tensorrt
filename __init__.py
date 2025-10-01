@@ -238,6 +238,30 @@ class LoadUpscalerTensorrtModelAdvanced(LoadUpscalerTensorrtModelBase):
             "max": IMAGE_DIM_MAX,
             "step": 64
         }
+        height_min = {
+            "default": IMAGE_DIM_MIN,
+            "min": IMAGE_DIM_MIN,
+            "max": IMAGE_DIM_MAX,
+            "step": 64
+        }
+        width_min = {
+            "default": IMAGE_DIM_MIN,
+            "min": IMAGE_DIM_MIN,
+            "max": IMAGE_DIM_MAX,
+            "step": 64
+        }
+        height_max = {
+            "default": IMAGE_DIM_MAX,
+            "min": IMAGE_DIM_MIN,
+            "max": IMAGE_DIM_MAX,
+            "step": 64
+        }
+        width_max = {
+            "default": IMAGE_DIM_MAX,
+            "min": IMAGE_DIM_MIN,
+            "max": IMAGE_DIM_MAX,
+            "step": 64
+        }
 
         return {
             "required": {
@@ -246,12 +270,12 @@ class LoadUpscalerTensorrtModelAdvanced(LoadUpscalerTensorrtModelBase):
                 "batch_size_min": ("INT", batch_size_defaults),
                 "batch_size_opt": ("INT", batch_size_defaults),
                 "batch_size_max": ("INT", batch_size_defaults),
-                "height_min": ("INT", height_defaults),
+                "height_min": ("INT", height_min),
                 "height_opt": ("INT", height_defaults),
-                "height_max": ("INT", height_defaults),
-                "width_min": ("INT", width_defaults),
+                "height_max": ("INT", height_max),
+                "width_min": ("INT", width_min),
                 "width_opt": ("INT", width_defaults),
-                "width_max": ("INT", width_defaults),
+                "width_max": ("INT", width_max),
             }
         }
 
