@@ -170,6 +170,9 @@ class Engine:
         self.tensors = OrderedDict()
         self.inputs = {}
         self.outputs = {}
+    
+    def get_memory_size(self):
+        return self.engine.get_device_memory_size_for_profile_v2(0)
 
     def build(
         self,
