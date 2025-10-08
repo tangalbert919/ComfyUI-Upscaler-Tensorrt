@@ -85,8 +85,8 @@ class UpscalerTensorrt:
     RETURN_NAMES = ("IMAGE",)
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "upscaler_tensorrt"
-    CATEGORY = "tensorrt"
-    DESCRIPTION = "Upscale images with tensorrt"
+    CATEGORY = "TensorRT/upscaler"
+    DESCRIPTION = "Upscale images with TensorRT"
 
     def upscaler_tensorrt(self, images, upscaler_trt_model, resize_to):
         images_bchw = images.permute(0, 3, 1, 2)
@@ -156,8 +156,8 @@ class LoadUpscalerTensorrtModelBase:
 
     RETURN_NAMES = ("upscaler_trt_model",)
     RETURN_TYPES = ("UPSCALER_TRT_MODEL",)
-    CATEGORY = "tensorrt"
-    DESCRIPTION = "Load tensorrt model"
+    CATEGORY = "TensorRT/upscaler"
+    DESCRIPTION = "Load TensorRT model"
     FUNCTION = "load_upscaler_tensorrt_model"
 
     def _load_upscaler_tensorrt_model(self, model, precision, batch, height, width):
@@ -334,9 +334,9 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "UpscalerTensorrt": "Upscaler Tensorrt ⚡",
-    "LoadUpscalerTensorrtModel": "Load Upscale Tensorrt Model",
-    "LoadUpscalerTensorrtAdvanced": "Load Upscale Tensorrt Model (Advanced)",
+    "UpscalerTensorrt": "Upscaler TensorRT ⚡",
+    "LoadUpscalerTensorrtModel": "Load Upscale TensorRT Model",
+    "LoadUpscalerTensorrtAdvanced": "Load Upscale TensorRT Model (Advanced)",
 }
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
