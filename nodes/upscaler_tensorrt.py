@@ -32,7 +32,7 @@ class UpscalerTensorrt:
     RETURN_NAMES = ("IMAGE",)
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "upscaler_tensorrt"
-    CATEGORY = "tensorrt"
+    CATEGORY = "TensorRT/upscaler"
 
     def upscaler_tensorrt(self, **kwargs):
         images = kwargs.get("images")

@@ -41,7 +41,7 @@ class LoadUpscalerTensorrtModel:
     RETURN_NAMES = ("upscaler_trt_model",)
     RETURN_TYPES = ("UPSCALER_TRT_MODEL",)
     FUNCTION = "load_upscaler_tensorrt_model"
-    CATEGORY = "tensorrt"
+    CATEGORY = "TensorRT/upscaler"
 
     def load_upscaler_tensorrt_model(self, model, precision):
             tensorrt_models_dir = os.path.join(folder_paths.models_dir, "tensorrt", "upscaler")

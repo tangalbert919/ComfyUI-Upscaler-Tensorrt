@@ -8,8 +8,8 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "UpscalerTensorrt": "Upscaler Tensorrt ⚡",
-    "LoadUpscalerTensorrtModel": "Load Upscale Tensorrt Model",
+    "UpscalerTensorrt": "Upscaler TensorRT ⚡",
+    "LoadUpscalerTensorrtModel": "Load Upscale TensorRT Model"
 }
 
 WEB_DIRECTORY = "./js"
