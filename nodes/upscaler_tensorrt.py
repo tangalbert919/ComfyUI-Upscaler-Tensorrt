@@ -66,6 +66,12 @@ class UpscalerTensorrt:
             "output": {"shape": (1, 3, H * scale, W * scale)},
         }
 
+        device = mm.get_torch_device()
+
+        memory_required = upscaler_trt_model.get_memory_size()
+        memory_required += (H * W * 3) * images.element_size() * scale_factor
+        mm.free_memory(memory_required, device)
+
         upscaler_trt_model.activate()
         upscaler_trt_model.allocate_buffers(shape_dict=shape_dict)
 
