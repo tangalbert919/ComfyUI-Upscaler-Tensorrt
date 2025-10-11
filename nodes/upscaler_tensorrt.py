@@ -69,8 +69,17 @@ class UpscalerTensorrt:
         device = mm.get_torch_device()
 
         memory_required = upscaler_trt_model.get_memory_size()
-        memory_required += (H * W * 3) * images.element_size() * scale_factor
+        memory_required += (H * W * 3) * images.element_size() * scale
+        memory_required += images.nelement() * images.element_size()
         mm.free_memory(memory_required, device)
+
+        # Do split batching if input batch size exceeds engine's max
+        min_batch = upscaler_trt_model.get_min_batch_size()
+        max_batch = upscaler_trt_model.get_max_batch_size()
+        for i in range(max_batch, min_batch - 1, -1):
+            if B % i == 0:
+                curr_split_batch = B // i
+                break
 
         upscaler_trt_model.activate()
         upscaler_trt_model.allocate_buffers(shape_dict=shape_dict)
@@ -78,7 +87,7 @@ class UpscalerTensorrt:
         cudaStream = torch.cuda.current_stream().cuda_stream
         pbar = ProgressBar(B)
 
-        images_list = list(torch.split(images_bchw, 1))
+        images_list = list(torch.split(images_bchw, split_size_or_sections=min(max_batch, B)))
 
         upscaled_frames = torch.empty(
             (B, C, final_height, final_width),
@@ -96,8 +105,8 @@ class UpscalerTensorrt:
             disable=(B == 1)
         )
 
-        for i, img in enumerate(images_list):
-            result = upscaler_trt_model.infer({"input": img}, cudaStream)["output"]
+        for batch in range(curr_split_batch):
+            result = upscaler_trt_model.infer({"input": images_list[batch]}, cudaStream)["output"]
 
             if must_resize:
                 result = torch.nn.functional.interpolate(
@@ -107,8 +116,9 @@ class UpscalerTensorrt:
                     antialias=True
                 )
 
-            upscaled_frames[i] = result.to(mm.intermediate_device())
-            pbar.update(1)
+            for output_index, upscaled_index in enumerate(range(batch*min(max_batch, B), batch*min(max_batch, B) + len(images_list[batch]))):
+                upscaled_frames[upscaled_index] = result[output_index].to(mm.intermediate_device())
+                pbar.update(1)
             progress_bar.update(1)
 
         output = upscaled_frames.permute(0, 2, 3, 1)
