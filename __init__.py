@@ -107,29 +107,38 @@ class UpscalerTensorrt:
 
         logger.info(f"Upscaling {B} images from H:{H}, W:{W} to H:{H*scale_factor}, W:{W*scale_factor} | Final resolution: H:{final_height}, W:{final_width} | resize_to: {resize_to}")
 
-        shape_dict = {
-            "input": {"shape": (1, 3, H, W)},
-            "output": {"shape": (1, 3, H*scale_factor, W*scale_factor)},
-        }
-
         device = mm.get_torch_device()
 
         memory_required = upscaler_trt_model.get_memory_size()
         memory_required += (H * W * 3) * images.element_size() * scale_factor
+        memory_required += images.nelement() * images.element_size()
         mm.free_memory(memory_required, device)
+
+        # Do split batching if input batch size exceeds engine's max
+        min_batch = upscaler_trt_model.get_min_batch_size()
+        max_batch = upscaler_trt_model.get_max_batch_size()
+        for i in range(max_batch, min_batch - 1, -1):
+            if B % i == 0:
+                curr_split_batch = B // i
+                break
+
+        shape_dict = {
+            "input": {"shape": (min(max_batch, B), 3, H, W)},
+            "output": {"shape": (min(max_batch, B), 3, H*scale_factor, W*scale_factor)},
+        }
 
         upscaler_trt_model.activate()
         upscaler_trt_model.allocate_buffers(shape_dict=shape_dict)
 
         cudaStream = torch.cuda.current_stream().cuda_stream
         pbar = ProgressBar(B)
-        images_list = list(torch.split(images_bchw, split_size_or_sections=1))
+        images_list = list(torch.split(images_bchw, split_size_or_sections=min(max_batch, B)))
 
         upscaled_frames = torch.empty((B, C, final_height, final_width), dtype=torch.float32, device=mm.intermediate_device())
         must_resize = W*scale_factor != final_width or H*scale_factor != final_height
 
-        for i, img in enumerate(images_list):
-            result = upscaler_trt_model.infer({"input": img}, cudaStream)
+        for batch in range(curr_split_batch):
+            result = upscaler_trt_model.infer({"input": images_list[batch]}, cudaStream)
             result = result["output"]
 
             if must_resize:
@@ -139,8 +148,10 @@ class UpscalerTensorrt:
                     mode='bicubic',
                     antialias=True
                 )
-            upscaled_frames[i] = result.to(mm.intermediate_device())
-            pbar.update(1)
+
+            for output_index, upscaled_index in enumerate(range(batch*min(max_batch, B), batch*min(max_batch, B) + len(images_list[batch]))):
+                upscaled_frames[upscaled_index] = result[output_index].to(mm.intermediate_device())
+                pbar.update(1)
 
         output = upscaled_frames.permute(0, 2, 3, 1)
         upscaler_trt_model.reset()

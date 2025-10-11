@@ -170,9 +170,21 @@ class Engine:
         self.tensors = OrderedDict()
         self.inputs = {}
         self.outputs = {}
-    
+
     def get_memory_size(self):
+        if not self.engine:
+            raise RuntimeError("No engine is currently loaded!")
         return self.engine.get_device_memory_size_for_profile_v2(0)
+
+    def get_max_batch_size(self):
+        if not self.engine:
+            raise RuntimeError("No engine is currently loaded!")
+        return self.engine.get_tensor_profile_shape('input', 0)[2][0]
+
+    def get_min_batch_size(self):
+        if not self.engine:
+            raise RuntimeError("No engine is currently loaded!")
+        return self.engine.get_tensor_profile_shape('input', 0)[0][0]
 
     def build(
         self,
