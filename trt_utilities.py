@@ -42,6 +42,7 @@ else:
 from logging import error, warning
 from tqdm import tqdm
 import copy
+import os
 
 TRT_LOGGER = trt.Logger(trt.Logger.ERROR)
 G_LOGGER.module_severity = G_LOGGER.ERROR
@@ -150,6 +151,7 @@ class Engine:
         self.context = None
         self.buffers = OrderedDict()
         self.tensors = OrderedDict()
+        self.timing_cache = None
         self.cuda_graph_instance = None  # cuda graph
 
     def __del__(self):
@@ -157,6 +159,7 @@ class Engine:
         del self.context
         del self.buffers
         del self.tensors
+        del self.timing_cache
 
     def reset(self, engine_path=None):
         # del self.engine
@@ -226,6 +229,15 @@ class Engine:
             builder = network[0]
 
         config = builder.create_builder_config()
+        if timing_cache:
+            buffer = b""
+            if os.path.exists(timing_cache):
+                with open(timing_cache, mode="rb") as timing_cache_file:
+                    buffer = timing_cache_file.read()
+            else:
+                print("No timing cache found; creating new one")
+            cache = config.create_timing_cache(buffer)
+            config.set_timing_cache(cache, ignore_mismatch=True)
         config.progress_monitor = TQDMProgressMonitor()
 
         # TensorRT-RTX only allows strongly typed networks, so precision is dependent on the model
@@ -260,6 +272,10 @@ class Engine:
         except Exception as e:
             error(f"Failed to save engine: {e}")
             return 1
+        if timing_cache:
+            cache = config.get_timing_cache()
+            with open(timing_cache, "wb") as timing_cache_file:
+                timing_cache_file.write(memoryview(timing_cache.serialize()))
         return 0
 
     def load(self):
