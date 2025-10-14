@@ -1,21 +1,14 @@
 from .nodes.load_tensorrt_model import LoadUpscalerTensorrtModel
 from .nodes.upscaler_tensorrt import UpscalerTensorrt
+from comfy_api.latest import ComfyExtension, io
 
 
-NODE_CLASS_MAPPINGS = {
-    "UpscalerTensorrt": UpscalerTensorrt,
-    "LoadUpscalerTensorrtModel": LoadUpscalerTensorrtModel,
-}
+class UpscalerTensorrtExtension(ComfyExtension):
+    async def get_node_list(self) -> list[type[io.ComfyNode]]:
+        return [
+            UpscalerTensorrt,
+            LoadUpscalerTensorrtModel
+        ]
 
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "UpscalerTensorrt": "Upscaler TensorRT ⚡",
-    "LoadUpscalerTensorrtModel": "Load Upscale TensorRT Model"
-}
-
-WEB_DIRECTORY = "./js"
-
-__all__ = [
-    "NODE_CLASS_MAPPINGS",
-    "NODE_DISPLAY_NAME_MAPPINGS",
-    "WEB_DIRECTORY",
-]
+async def comfy_entrypoint() -> UpscalerTensorrtExtension:
+    return UpscalerTensorrtExtension()

@@ -1,5 +1,6 @@
 import os
 import folder_paths
+from comfy_api.latest import io
 from ..trt_utilities import Engine
 from ..utilities import download_file, logger, LOAD_UPSCALER_NODE_CONFIG
 import comfy.model_management as mm
@@ -21,7 +22,7 @@ IMAGE_DIM_MAX = LOAD_UPSCALER_NODE_CONFIG.get("IMAGE_DIM_MAX")
 
 class LoadUpscalerTensorrtModel:
     @classmethod
-    def INPUT_TYPES(cls):
+    def define_schema(cls) -> io.Schema:
         model_config = LOAD_UPSCALER_NODE_CONFIG.get("models", {})
         precision_config = LOAD_UPSCALER_NODE_CONFIG.get("precision", {})
 
@@ -31,19 +32,24 @@ class LoadUpscalerTensorrtModel:
         precision_options = precision_config.get("options", ["fp16", "fp32"])
         precision_default = precision_config.get("default", "fp16")
 
-        return {
-            "required": {
-                "model": (model_options, {"default": model_default}),
-                "precision": (precision_options, {"default": precision_default}),
-            }
-        }
+        return io.Schema(
+            node_id="LoadUpscalerTensorrtModel",
+            display_name="Load Upscale TensorRT Model",
+            category="TensorRT/upscaler",
+            description="Load TensorRT model",
+            inputs=[
+                io.Combo.Input("model", options=model_options,
+                               default=model_default),
+                io.Combo.Input("precision", options=precision_options,
+                               default=precision_default)
+            ],
+            outputs=[
+                io.Custom("upscaler_trt_model").Output("upscaler_trt_model")
+            ]
+        )
 
-    RETURN_NAMES = ("upscaler_trt_model",)
-    RETURN_TYPES = ("UPSCALER_TRT_MODEL",)
-    FUNCTION = "load_upscaler_tensorrt_model"
-    CATEGORY = "TensorRT/upscaler"
-
-    def load_upscaler_tensorrt_model(self, model, precision):
+    @classmethod
+    def execute(self, model, precision) -> io.NodeOutput:
             tensorrt_models_dir = os.path.join(folder_paths.models_dir, "tensorrt", "upscaler")
             onnx_models_dir = os.path.join(folder_paths.models_dir, "onnx")
 
@@ -86,4 +92,4 @@ class LoadUpscalerTensorrtModel:
             engine.load()
             engine.model_name = model
 
-            return (engine,)
+            return io.NodeOutput(engine)

@@ -2,6 +2,7 @@ import os
 import numpy as np
 import torch
 from comfy.utils import ProgressBar
+from comfy_api.latest import io
 from ..trt_utilities import Engine
 from ..utilities import logger, get_final_resolutions, get_model_scale, LOAD_UPSCALER_NODE_CONFIG
 import comfy.model_management as mm
@@ -11,30 +12,32 @@ IMAGE_DIM_MIN = LOAD_UPSCALER_NODE_CONFIG.get("IMAGE_DIM_MIN")
 IMAGE_DIM_OPT = LOAD_UPSCALER_NODE_CONFIG.get("IMAGE_DIM_OPT")
 IMAGE_DIM_MAX = LOAD_UPSCALER_NODE_CONFIG.get("IMAGE_DIM_MAX")
 
-class UpscalerTensorrt:
+class UpscalerTensorrt(io.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "images": ("IMAGE", {}),
-                "upscaler_trt_model": ("UPSCALER_TRT_MODEL", {}),
-                "resize_to": (
-                    ["none", "custom", "HD", "FHD", "2k", "4k",
-                     "1x", "1.5x", "2x", "2.5x", "3x", "3.5x",
-                     "4x", "5x", "6x", "7x", "8x", "9x", "10x"],
-                    {}
-                ),
-                "resize_width": ("INT", {"default": 1024, "min": 1, "max": 8192}),
-                "resize_height": ("INT", {"default": 1024, "min": 1, "max": 8192}),
-            }
-        }
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="UpscalerTensorrt",
+            display_name="Upscaler TensorRT ⚡",
+            category="TensorRT/upscaler",
+            description="Upscale images with TensorRT",
+            inputs=[
+                io.Image.Input("images"),
+                io.Custom("upscaler_trt_model").Input("upscaler_trt_model"),
+                io.Combo.Input("resize_to",
+                               options=["none", "custom", "HD", "FHD", "2k", "4k",
+                                        "1x", "1.5x", "2x", "2.5x", "3x", "3.5x",
+                                        "4x", "5x", "6x", "7x", "8x", "9x", "10x"],
+                               tooltip="Resize the upscaled image to fixed resolutions, optional"),
+                io.Int.Input("resize_width", default=1024, min=1, max=8192),
+                io.Int.Input("resize_height", default=1024, min=1, max=8192)
+            ],
+            outputs=[
+                io.Image.Output()
+            ]
+        )
 
-    RETURN_NAMES = ("IMAGE",)
-    RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "upscaler_tensorrt"
-    CATEGORY = "TensorRT/upscaler"
-
-    def upscaler_tensorrt(self, **kwargs):
+    @classmethod
+    def execute(self, **kwargs) -> io.NodeOutput:
         images = kwargs.get("images")
         upscaler_trt_model = kwargs.get("upscaler_trt_model")
         resize_to = kwargs.get("resize_to")
@@ -126,4 +129,4 @@ class UpscalerTensorrt:
         upscaler_trt_model.reset()
         mm.soft_empty_cache()
 
-        return (output,)
+        return io.NodeOutput(output)
