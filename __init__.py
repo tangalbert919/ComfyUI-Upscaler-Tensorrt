@@ -3,6 +3,7 @@ import folder_paths
 import numpy as np
 import torch
 from comfy.utils import ProgressBar
+from comfy_api.latest import ComfyExtension, io
 from .trt_utilities import Engine
 from .utilities import download_file, ColoredLogger, get_final_resolutions
 import comfy.model_management as mm
@@ -72,23 +73,28 @@ def load_node_config(config_filename="load_upscaler_config.json"):
 LOAD_UPSCALER_NODE_CONFIG = load_node_config()
 
 
-class UpscalerTensorrt:
+class UpscalerTensorrt(io.ComfyNode):
     @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "images": ("IMAGE", {"tooltip": f"Images to be upscaled. Resolution must be between {IMAGE_DIM_MIN} and {IMAGE_DIM_MAX} px"}),
-                "upscaler_trt_model": ("UPSCALER_TRT_MODEL", {"tooltip": "Tensorrt model built and loaded"}),
-                "resize_to": (["none", "HD", "FHD", "2k", "4k", "2x", "3x"],{"tooltip": "Resize the upscaled image to fixed resolutions, optional"}),
-            }
-        }
-    RETURN_NAMES = ("IMAGE",)
-    RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "upscaler_tensorrt"
-    CATEGORY = "TensorRT/upscaler"
-    DESCRIPTION = "Upscale images with TensorRT"
+    def define_schema(s) -> io.Schema:
+        return io.Schema(
+            node_id="UpscalerTensorrt",
+            display_name="Upscaler TensorRT ⚡",
+            category="TensorRT/upscaler",
+            description="Upscale images with TensorRT",
+            inputs=[
+                io.Image.Input("images"),
+                io.Custom("upscaler_trt_model").Input("upscaler_trt_model"),
+                io.Combo.Input("resize_to",
+                               options=["none", "HD", "FHD", "2k", "4k", "2x", "3x"],
+                               tooltip="Resize the upscaled image to fixed resolutions, optional")
+            ],
+            outputs=[
+                io.Image.Output()
+            ]
+        )
 
-    def upscaler_tensorrt(self, images, upscaler_trt_model, resize_to):
+    @classmethod
+    def execute(self, images, upscaler_trt_model, resize_to) -> io.NodeOutput:
         images_bchw = images.permute(0, 3, 1, 2)
         B, C, H, W = images_bchw.shape
 
@@ -158,19 +164,14 @@ class UpscalerTensorrt:
         mm.soft_empty_cache()
 
         logger.info(f"Output shape: {output.shape}")
-        return (output,)
+        return io.NodeOutput(output)
 
-class LoadUpscalerTensorrtModelBase:
+class LoadUpscalerTensorrtModelBase(io.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls): # Changed 's' to 'cls' for convention
+    def define_schema(cls) -> io.Schema: # Changed 's' to 'cls' for convention
         raise NotImplementedError
 
-    RETURN_NAMES = ("upscaler_trt_model",)
-    RETURN_TYPES = ("UPSCALER_TRT_MODEL",)
-    CATEGORY = "TensorRT/upscaler"
-    DESCRIPTION = "Load TensorRT model"
-    FUNCTION = "load_upscaler_tensorrt_model"
-
+    @classmethod
     def _load_upscaler_tensorrt_model(self, model, precision, batch, height, width):
         tensorrt_models_dir = os.path.join(folder_paths.models_dir, "tensorrt", "upscaler")
         onnx_models_dir = os.path.join(folder_paths.models_dir, "onnx")
@@ -216,14 +217,12 @@ class LoadUpscalerTensorrtModelBase:
         # --- Save model name for later access ---
         engine.model_name = model
 
-        return (engine,)
+        return engine
 
 class LoadUpscalerTensorrtModelAdvanced(LoadUpscalerTensorrtModelBase):
-    def __init__(self):
-        super(LoadUpscalerTensorrtModelAdvanced, self).__init__()
 
     @classmethod
-    def INPUT_TYPES(cls): # Changed 's' to 'cls' for convention
+    def define_schema(cls) -> io.Schema: # Changed 's' to 'cls' for convention
         # Use the pre-loaded configuration
         model_config = LOAD_UPSCALER_NODE_CONFIG.get("model", {})
         precision_config = LOAD_UPSCALER_NODE_CONFIG.get("precision", {})
@@ -238,80 +237,102 @@ class LoadUpscalerTensorrtModelAdvanced(LoadUpscalerTensorrtModelBase):
         precision_tooltip = precision_config.get("tooltip", "Select precision.")
 
         # Advanced settings
-        batch_size_defaults = {
-            "default": 1,
-            "min": 1,
-            "max": 100,
-            "step": 1
-        }
-        height_defaults = {
-            "default": IMAGE_DIM_OPT,
-            "min": IMAGE_DIM_MIN,
-            "max": IMAGE_DIM_MAX,
-            "step": 64
-        }
-        width_defaults = {
-            "default": IMAGE_DIM_OPT,
-            "min": IMAGE_DIM_MIN,
-            "max": IMAGE_DIM_MAX,
-            "step": 64
-        }
-        height_min = {
-            "default": IMAGE_DIM_MIN,
-            "min": IMAGE_DIM_MIN,
-            "max": IMAGE_DIM_MAX,
-            "step": 64
-        }
-        width_min = {
-            "default": IMAGE_DIM_MIN,
-            "min": IMAGE_DIM_MIN,
-            "max": IMAGE_DIM_MAX,
-            "step": 64
-        }
-        height_max = {
-            "default": IMAGE_DIM_MAX,
-            "min": IMAGE_DIM_MIN,
-            "max": IMAGE_DIM_MAX,
-            "step": 64
-        }
-        width_max = {
-            "default": IMAGE_DIM_MAX,
-            "min": IMAGE_DIM_MIN,
-            "max": IMAGE_DIM_MAX,
-            "step": 64
-        }
+        batch_size_defaults = io.Int.Input("batch_size_opt",
+            default=1,
+            min=1,
+            max=100,
+            step=1
+        )
+        height_defaults = io.Int.Input("height_opt",
+            default=IMAGE_DIM_OPT,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
+        width_defaults = io.Int.Input("width_opt",
+            default=IMAGE_DIM_OPT,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
+        batch_size_min = io.Int.Input("batch_size_min",
+            default=1,
+            min=1,
+            max=100,
+            step=1
+        )
+        height_min = io.Int.Input("height_min",
+            default=IMAGE_DIM_MIN,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
+        width_min = io.Int.Input("width_min",
+            default=IMAGE_DIM_MIN,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
+        batch_size_max = io.Int.Input("batch_size_max",
+            default=1,
+            min=1,
+            max=100,
+            step=1
+        )
+        height_max = io.Int.Input("height_max",
+            default=IMAGE_DIM_MAX,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
+        width_max = io.Int.Input("width_max",
+            default=IMAGE_DIM_MAX,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
 
-        return {
-            "required": {
-                "model": (model_options, {"default": model_default, "tooltip": model_tooltip}),
-                "precision": (precision_options, {"default": precision_default, "tooltip": precision_tooltip}),
-                "batch_size_min": ("INT", batch_size_defaults),
-                "batch_size_opt": ("INT", batch_size_defaults),
-                "batch_size_max": ("INT", batch_size_defaults),
-                "height_min": ("INT", height_min),
-                "height_opt": ("INT", height_defaults),
-                "height_max": ("INT", height_max),
-                "width_min": ("INT", width_min),
-                "width_opt": ("INT", width_defaults),
-                "width_max": ("INT", width_max),
-            }
-        }
+        return io.Schema(
+            node_id="LoadUpscalerTensorrtAdvanced",
+            display_name="Load Upscale TensorRT Model (Advanced)",
+            category="TensorRT/upscaler",
+            description="Load TensorRT model (advanced)",
+            inputs=[
+                io.Combo.Input("model", options=model_options,
+                               default=model_default,
+                               tooltip=model_tooltip),
+                io.Combo.Input("precision", options=precision_options,
+                               default=precision_default,
+                               tooltip=precision_tooltip),
+                batch_size_min,
+                batch_size_defaults,
+                batch_size_max,
+                height_min,
+                height_defaults,
+                height_max,
+                width_min,
+                width_defaults,
+                width_max
+            ],
+            outputs=[
+                io.Custom("upscaler_trt_model").Output("upscaler_trt_model")
+            ]
+        )
 
-    def load_upscaler_tensorrt_model(self, model, precision, batch_size_min,
+    @classmethod
+    def execute(self, model, precision, batch_size_min,
                                      batch_size_opt, batch_size_max, height_min,
                                      height_opt, height_max, width_min,
-                                     width_opt, width_max):
+                                     width_opt, width_max) -> io.NodeOutput:
         batch = [batch_size_min, batch_size_opt, batch_size_max]
         height = [height_min, height_opt, height_max]
         width = [width_min, width_opt, width_max]
-        return super()._load_upscaler_tensorrt_model(model, precision, batch, height, width)
+        return io.NodeOutput(super()._load_upscaler_tensorrt_model(model, precision, batch, height, width))
 
 class LoadUpscalerTensorrtModel(LoadUpscalerTensorrtModelBase):
-    def __init__(self):
-        super(LoadUpscalerTensorrtModel, self).__init__()
 
     @classmethod
-    def INPUT_TYPES(cls): # Changed 's' to 'cls' for convention
+    def define_schema(cls) -> io.Schema: # Changed 's' to 'cls' for convention
         # Use the pre-loaded configuration
         model_config = LOAD_UPSCALER_NODE_CONFIG.get("model", {})
         precision_config = LOAD_UPSCALER_NODE_CONFIG.get("precision", {})
@@ -325,29 +346,38 @@ class LoadUpscalerTensorrtModel(LoadUpscalerTensorrtModelBase):
         precision_default = precision_config.get("default", "fp16")
         precision_tooltip = precision_config.get("tooltip", "Select precision.")
 
-        return {
-            "required": {
-                "model": (model_options, {"default": model_default, "tooltip": model_tooltip}),
-                "precision": (precision_options, {"default": precision_default, "tooltip": precision_tooltip}),
-            }
-        }
+        return io.Schema(
+            node_id="LoadUpscalerTensorrtModel",
+            display_name="Load Upscale TensorRT Model",
+            category="TensorRT/upscaler",
+            description="Load TensorRT model",
+            inputs=[
+                io.Combo.Input("model", options=model_options,
+                               default=model_default,
+                               tooltip=model_tooltip),
+                io.Combo.Input("precision", options=precision_options,
+                               default=precision_default,
+                               tooltip=precision_tooltip)
+            ],
+            outputs=[
+                io.Custom("upscaler_trt_model").Output("upscaler_trt_model")
+            ]
+        )
 
-    def load_upscaler_tensorrt_model(self, model, precision):
+    @classmethod
+    def execute(self, model, precision) -> io.NodeOutput:
         batch = [1, 1, 1]
         height = [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
         width = [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
-        return super()._load_upscaler_tensorrt_model(model, precision, batch, height, width)
+        return io.NodeOutput(super()._load_upscaler_tensorrt_model(model, precision, batch, height, width))
 
-NODE_CLASS_MAPPINGS = {
-    "UpscalerTensorrt": UpscalerTensorrt,
-    "LoadUpscalerTensorrtModel": LoadUpscalerTensorrtModel,
-    "LoadUpscalerTensorrtAdvanced": LoadUpscalerTensorrtModelAdvanced,
-}
+class UpscalerTensorrtExtension(ComfyExtension):
+    async def get_node_list(self) -> list[type[io.ComfyNode]]:
+        return [
+            UpscalerTensorrt,
+            LoadUpscalerTensorrtModel,
+            LoadUpscalerTensorrtModelAdvanced
+        ]
 
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "UpscalerTensorrt": "Upscaler TensorRT ⚡",
-    "LoadUpscalerTensorrtModel": "Load Upscale TensorRT Model",
-    "LoadUpscalerTensorrtAdvanced": "Load Upscale TensorRT Model (Advanced)",
-}
-
-__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
+async def comfy_entrypoint() -> UpscalerTensorrtExtension:
+    return UpscalerTensorrtExtension()
