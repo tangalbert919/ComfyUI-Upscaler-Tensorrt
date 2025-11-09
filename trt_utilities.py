@@ -199,6 +199,7 @@ class Engine:
         enable_all_tactics=False,
         timing_cache=None,
         update_output_names=None,
+        weight_streaming=False
     ):
         p = [Profile()]
         if input_profile:
@@ -243,6 +244,7 @@ class Engine:
         # TensorRT-RTX only allows strongly typed networks, so precision is dependent on the model
         config.set_flag(trt.BuilderFlag.FP16) if fp16 and not TENSORRT_RTX_AVAILABLE else None
         config.set_flag(trt.BuilderFlag.REFIT) if enable_refit else None
+        config.set_flag(trt.BuilderFlag.WEIGHT_STREAMING) if weight_streaming else None
 
         profiles = copy.deepcopy(p)
         for profile in profiles:
@@ -287,6 +289,7 @@ class Engine:
             self.engine = runtime.deserialize_cuda_engine(buffer)
         else:
             self.engine = engine_from_bytes(bytes_from_path(self.engine_path))
+        self.engine.weight_streaming_budget_v2 = self.engine.get_weight_streaming_automatic_budget()
 
     def activate(self, reuse_device_memory=None):
         if reuse_device_memory:

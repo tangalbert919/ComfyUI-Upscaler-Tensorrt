@@ -41,7 +41,9 @@ class LoadUpscalerTensorrtModel:
                 io.Combo.Input("model", options=model_options,
                                default=model_default),
                 io.Combo.Input("precision", options=precision_options,
-                               default=precision_default)
+                               default=precision_default),
+                io.Boolean.Input("weight_streaming",
+                               default=False)
             ],
             outputs=[
                 io.Custom("upscaler_trt_model").Output("upscaler_trt_model")
@@ -49,7 +51,7 @@ class LoadUpscalerTensorrtModel:
         )
 
     @classmethod
-    def execute(self, model, precision) -> io.NodeOutput:
+    def execute(self, model, precision, weight_streaming) -> io.NodeOutput:
             tensorrt_models_dir = os.path.join(folder_paths.models_dir, "tensorrt", "upscaler")
             onnx_models_dir = os.path.join(folder_paths.models_dir, "onnx")
 
@@ -82,6 +84,7 @@ class LoadUpscalerTensorrtModel:
                     input_profile=[
                         {"input": [(engine_min_batch,engine_channel,engine_min_h,engine_min_w), (engine_opt_batch,engine_channel,engine_opt_h,engine_opt_w), (engine_max_batch,engine_channel,engine_max_h,engine_max_w)]},
                     ],
+                    weight_streaming=weight_streaming
                 )
                 e = time.time()
                 logger.info(f"Time taken to build: {(e-s)} seconds")
