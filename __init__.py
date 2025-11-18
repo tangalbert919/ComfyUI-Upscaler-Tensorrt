@@ -220,6 +220,100 @@ class LoadUpscalerTensorrtModelBase(io.ComfyNode):
 
         return engine
 
+class TensorrtSettings(io.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        # Advanced settings
+        batch_size_defaults = io.Int.Input("batch_size_opt",
+            default=1,
+            min=1,
+            max=100,
+            step=1
+        )
+        height_defaults = io.Int.Input("height_opt",
+            default=IMAGE_DIM_OPT,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
+        width_defaults = io.Int.Input("width_opt",
+            default=IMAGE_DIM_OPT,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
+        batch_size_min = io.Int.Input("batch_size_min",
+            default=1,
+            min=1,
+            max=100,
+            step=1
+        )
+        height_min = io.Int.Input("height_min",
+            default=IMAGE_DIM_MIN,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
+        width_min = io.Int.Input("width_min",
+            default=IMAGE_DIM_MIN,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
+        batch_size_max = io.Int.Input("batch_size_max",
+            default=1,
+            min=1,
+            max=100,
+            step=1
+        )
+        height_max = io.Int.Input("height_max",
+            default=IMAGE_DIM_MAX,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
+        width_max = io.Int.Input("width_max",
+            default=IMAGE_DIM_MAX,
+            min=IMAGE_DIM_MIN,
+            max=IMAGE_DIM_MAX,
+            step=64
+        )
+        weight_stream_option = io.Boolean.Input("weight_streaming",
+                                                default=False)
+
+        return io.Schema(
+            node_id="TensorrtSettings",
+            display_name="TensorRT Model Settings",
+            category="TensorRT/upscaler",
+            description="Set custom parameters for TensorRT model",
+            inputs=[
+                batch_size_min,
+                batch_size_defaults,
+                batch_size_max,
+                height_min,
+                height_defaults,
+                height_max,
+                width_min,
+                width_defaults,
+                width_max,
+                weight_stream_option
+            ],
+            outputs=[
+                io.Custom("trt_settings").Output("trt_settings")
+            ]
+        )
+    
+    @classmethod
+    def execute(self, batch_size_min, batch_size_opt, batch_size_max,
+                height_min, height_opt, height_max,
+                width_min, width_opt, width_max,
+                weight_streaming) -> io.NodeOutput:
+        output = ([batch_size_min, batch_size_opt, batch_size_max],
+                  [height_min, height_opt, height_max],
+                  [width_min, width_opt, width_max],
+                  weight_streaming)
+        return io.NodeOutput(output)
+
 class LoadUpscalerTensorrtModelAdvanced(LoadUpscalerTensorrtModelBase):
 
     @classmethod
@@ -320,7 +414,8 @@ class LoadUpscalerTensorrtModelAdvanced(LoadUpscalerTensorrtModelBase):
             ],
             outputs=[
                 io.Custom("upscaler_trt_model").Output("upscaler_trt_model")
-            ]
+            ],
+            is_deprecated=True,
         )
 
     @classmethod
@@ -361,7 +456,8 @@ class LoadUpscalerTensorrtModel(LoadUpscalerTensorrtModelBase):
                                tooltip=model_tooltip),
                 io.Combo.Input("precision", options=precision_options,
                                default=precision_default,
-                               tooltip=precision_tooltip)
+                               tooltip=precision_tooltip),
+                io.Custom("trt_settings").Input("trt_settings", optional=True)
             ],
             outputs=[
                 io.Custom("upscaler_trt_model").Output("upscaler_trt_model")
@@ -369,18 +465,20 @@ class LoadUpscalerTensorrtModel(LoadUpscalerTensorrtModelBase):
         )
 
     @classmethod
-    def execute(self, model, precision) -> io.NodeOutput:
-        batch = [1, 1, 1]
-        height = [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
-        width = [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
-        return io.NodeOutput(super()._load_upscaler_tensorrt_model(model, precision, batch, height, width, False))
+    def execute(self, model, precision, trt_settings) -> io.NodeOutput:
+        batch = trt_settings[0] if trt_settings is not None else [1, 1, 1]
+        height = trt_settings[1] if trt_settings is not None else [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
+        width = trt_settings[2] if trt_settings is not None else [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
+        weight_streaming = trt_settings[3] if trt_settings is not None else False
+        return io.NodeOutput(super()._load_upscaler_tensorrt_model(model, precision, batch, height, width, weight_streaming))
 
 class UpscalerTensorrtExtension(ComfyExtension):
     async def get_node_list(self) -> list[type[io.ComfyNode]]:
         return [
             UpscalerTensorrt,
             LoadUpscalerTensorrtModel,
-            LoadUpscalerTensorrtModelAdvanced
+            LoadUpscalerTensorrtModelAdvanced,
+            TensorrtSettings
         ]
 
 async def comfy_entrypoint() -> UpscalerTensorrtExtension:
