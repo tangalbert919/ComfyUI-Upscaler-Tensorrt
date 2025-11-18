@@ -42,8 +42,7 @@ class LoadUpscalerTensorrtModel:
                                default=model_default),
                 io.Combo.Input("precision", options=precision_options,
                                default=precision_default),
-                io.Boolean.Input("weight_streaming",
-                               default=False)
+                io.Custom("trt_settings").Input("trt_settings", optional=True)
             ],
             outputs=[
                 io.Custom("upscaler_trt_model").Output("upscaler_trt_model")
@@ -51,7 +50,10 @@ class LoadUpscalerTensorrtModel:
         )
 
     @classmethod
-    def execute(self, model, precision, weight_streaming) -> io.NodeOutput:
+    def execute(self, model, precision, trt_settings) -> io.NodeOutput:
+            batch = trt_settings[0] if trt_settings is not None else [1, 1, 1]
+            height = trt_settings[1] if trt_settings is not None else [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
+            width = trt_settings[2] if trt_settings is not None else [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
             tensorrt_models_dir = os.path.join(folder_paths.models_dir, "tensorrt", "upscaler")
             onnx_models_dir = os.path.join(folder_paths.models_dir, "onnx")
 
@@ -61,9 +63,9 @@ class LoadUpscalerTensorrtModel:
             onnx_model_path = os.path.join(onnx_models_dir, f"{model}.onnx")
             
             engine_channel = 3
-            engine_min_batch, engine_opt_batch, engine_max_batch = 1, 1, 1
-            engine_min_h, engine_opt_h, engine_max_h = IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX
-            engine_min_w, engine_opt_w, engine_max_w = IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX
+            engine_min_batch, engine_opt_batch, engine_max_batch = batch
+            engine_min_h, engine_opt_h, engine_max_h = height
+            engine_min_w, engine_opt_w, engine_max_w = width
             tensorrt_model_path = os.path.join(tensorrt_models_dir, f"{model}_{precision if not TENSORRT_RTX_AVAILABLE else 'rtx'}_{engine_min_batch}x{engine_channel}x{engine_min_h}x{engine_min_w}_{engine_opt_batch}x{engine_channel}x{engine_opt_h}x{engine_opt_w}_{engine_max_batch}x{engine_channel}x{engine_max_h}x{engine_max_w}_{trt.__version__}.trt")
 
             if not os.path.exists(tensorrt_model_path):
@@ -84,7 +86,7 @@ class LoadUpscalerTensorrtModel:
                     input_profile=[
                         {"input": [(engine_min_batch,engine_channel,engine_min_h,engine_min_w), (engine_opt_batch,engine_channel,engine_opt_h,engine_opt_w), (engine_max_batch,engine_channel,engine_max_h,engine_max_w)]},
                     ],
-                    weight_streaming=weight_streaming
+                    weight_streaming=trt_settings[3] if trt_settings is not None else False
                 )
                 e = time.time()
                 logger.info(f"Time taken to build: {(e-s)} seconds")
