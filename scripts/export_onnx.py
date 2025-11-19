@@ -2,14 +2,10 @@
 # edit model paths accordingly 
 
 import torch
-import folder_paths
+#import folder_paths
+import os
 from spandrel import ModelLoader, ImageModelDescriptor
 
-model_name = "4xNomos2_otf_esrgan.pth"
-onnx_save_path = "./4xNomos2_otf_esrgan.onnx"
-
-model_path = folder_paths.get_full_path_or_raise("upscale_models", model_name)
-model = ModelLoader().load_from_file(model_path).model.eval().cuda()
 
 # Check dynamic shapes for esrgan 4x model
 def supports_dynamic_shapes_esrgan(model, scale=4):
@@ -48,32 +44,51 @@ def supports_dynamic_shapes_esrgan(model, scale=4):
     if not all_passed: print(f"Failure: Dynamic shapes NOT supported.")
     return all_passed
 
-# Use smaller dummy input if model supports
-if supports_dynamic_shapes_esrgan(model):
-    shape = (1, 3, 64, 64)
-    print(f"Using {shape} input (less VRAM usage)")
-else:
-    shape = (1, 3, 512, 512)
-    print(f"Using {shape} input (large VRAM usage)")
+if __name__ == "__main__":
+    EXPORT_FP16 = True
+    model_name = "4xNomos2_otf_esrgan.pth"
+    onnx_model_name = f"4xNomos2_otf_esrgan{'_fp16' if EXPORT_FP16 else None}.onnx"
 
-x = torch.rand(*shape).cuda()
+    #model_path = folder_paths.get_full_path_or_raise("upscale_models", model_name)
+    model_path = os.path.normpath(os.path.join(os.path.abspath("."), os.path.normcase("../../.."), "models", "upscale_models", model_name))
+    onnx_save_path = os.path.normpath(os.path.join(os.path.abspath("."), os.path.normcase("../.."), "models", "onnx", onnx_model_name))
+    try:
+        model = ModelLoader().load_from_file(model_path).model.eval().cuda()
+    except:
+        model = torch.load(model_path, weights_only=False)
+        #model.eval()
+        model = model.state_dict()
 
-dynamic_axes = {
-    "input": {0: "batch_size", 2: "width", 3: "height"},
-    "output": {0: "batch_size", 2: "width", 3: "height"},
-}
+    # Use smaller dummy input if model supports
+    if supports_dynamic_shapes_esrgan(model):
+        shape = (1, 3, 64, 64)
+        print(f"Using {shape} input (less VRAM usage)")
+    else:
+        shape = (1, 3, 512, 512)
+        print(f"Using {shape} input (large VRAM usage)")
 
-with torch.no_grad():
-    torch.onnx.export(
-        model,
-        x,
-        onnx_save_path,
-        verbose=True,
-        input_names=['input'],
-        output_names=['output'],
-        opset_version=17,
-        export_params=True,
-        dynamic_axes=dynamic_axes,
-    )
+    x = torch.rand(*shape).cuda()
 
-print("Saved onnx to:", onnx_save_path)
+    dynamic_axes = {
+        "input": {0: "batch_size", 2: "width", 3: "height"},
+        "output": {0: "batch_size", 2: "width", 3: "height"},
+    }
+
+    if EXPORT_FP16:
+        x = x.to(dtype=torch.float16)
+        model = model.to(dtype=torch.float16)
+
+    with torch.no_grad():
+        torch.onnx.export(
+            model,
+            x,
+            onnx_save_path,
+            verbose=True,
+            input_names=['input'],
+            output_names=['output'],
+            export_params=True,
+            dynamic_axes=dynamic_axes,
+            external_data=False,
+        )
+
+    print("Saved onnx to:", onnx_save_path)
