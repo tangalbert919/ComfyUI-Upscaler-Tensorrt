@@ -1,8 +1,10 @@
 import os
 import folder_paths
+import torch
 from comfy_api.latest import io
 from ..trt_utilities import Engine
 from ..utilities import download_file, logger, LOAD_UPSCALER_NODE_CONFIG
+from ..scripts.export_onnx import supports_dynamic_shapes_esrgan
 import comfy.model_management as mm
 import time
 
@@ -20,26 +22,22 @@ IMAGE_DIM_MIN = LOAD_UPSCALER_NODE_CONFIG.get("IMAGE_DIM_MIN")
 IMAGE_DIM_OPT = LOAD_UPSCALER_NODE_CONFIG.get("IMAGE_DIM_OPT")
 IMAGE_DIM_MAX = LOAD_UPSCALER_NODE_CONFIG.get("IMAGE_DIM_MAX")
 
-class LoadUpscalerTensorrtModel(io.ComfyNode):
+class LoadUpscalerTensorrtModelLocal(io.ComfyNode):
     @classmethod
     def define_schema(cls) -> io.Schema:
-        model_config = LOAD_UPSCALER_NODE_CONFIG.get("models", {})
         precision_config = LOAD_UPSCALER_NODE_CONFIG.get("precision", {})
-
-        model_options = [m["name"] for m in model_config]
-        model_default = model_options[0] if model_options else "4x-UltraSharp"
 
         precision_options = precision_config.get("options", ["fp16", "fp32"])
         precision_default = precision_config.get("default", "fp16")
 
         return io.Schema(
-            node_id="LoadUpscalerTensorrtModel",
-            display_name="Load Upscale TensorRT Model",
+            node_id="LoadUpscalerTensorrtModelLocal",
+            display_name="Convert Upscaler Model to TensorRT",
             category="TensorRT/upscaler",
-            description="Load TensorRT model",
+            description="Convert Upscaler Model to TensorRT",
             inputs=[
-                io.Combo.Input("model", options=model_options,
-                               default=model_default),
+                io.UpscaleModel.Input("upscaler_model"),
+                io.String.Input("filename", default="model"),
                 io.Combo.Input("precision", options=precision_options,
                                default=precision_default),
                 io.Custom("trt_settings").Input("trt_settings", optional=True)
@@ -50,7 +48,7 @@ class LoadUpscalerTensorrtModel(io.ComfyNode):
         )
 
     @classmethod
-    def execute(self, model, precision, trt_settings) -> io.NodeOutput:
+    def execute(self, upscaler_model, filename, precision, trt_settings) -> io.NodeOutput:
             batch = trt_settings[0] if trt_settings is not None else [1, 1, 1]
             height = trt_settings[1] if trt_settings is not None else [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
             width = trt_settings[2] if trt_settings is not None else [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
@@ -60,17 +58,51 @@ class LoadUpscalerTensorrtModel(io.ComfyNode):
             os.makedirs(tensorrt_models_dir, exist_ok=True)
             os.makedirs(onnx_models_dir, exist_ok=True)
 
-            onnx_model_path = os.path.join(onnx_models_dir, f"{model}.onnx")
-            
+            onnx_model_path = os.path.join(onnx_models_dir, f"{filename}_{precision}.onnx")
+            if not os.path.exists(onnx_model_path):
+                logger.info(f"Converting model to {filename}_{precision}.onnx")
+                device = mm.get_torch_device()
+                mm.free_memory(mm.module_size(upscaler_model.model), device)
+                upscaler_model.to(device)
+
+                if supports_dynamic_shapes_esrgan(upscaler_model.model, scale=upscaler_model.scale):
+                    shape = (1, 3, 64, 64)
+                else:
+                    shape = (1, 3, 512, 512)
+                x = torch.rand(*shape).to(device)
+
+                dynamic_axes = {
+                    "input": {0: "batch_size", 2: "width", 3: "height"},
+                    "output": {0: "batch_size", 2: "width", 3: "height"},
+                }
+
+                if precision == "fp16":
+                    x = x.to(dtype=torch.float16)
+                    upscaler_model.model.to(dtype=torch.float16)
+
+                with torch.no_grad():
+                    torch.onnx.export(
+                        upscaler_model.model,
+                        x,
+                        onnx_model_path,
+                        input_names=['input'],
+                        output_names=['output'],
+                        export_params=True,
+                        dynamic_axes=dynamic_axes,
+                        external_data=False,
+                    )
+            else:
+                logger.info("ONNX found, no need to convert")
+
             engine_channel = 3
             engine_min_batch, engine_opt_batch, engine_max_batch = batch
             engine_min_h, engine_opt_h, engine_max_h = height
             engine_min_w, engine_opt_w, engine_max_w = width
-            tensorrt_model_path = os.path.join(tensorrt_models_dir, f"{model}_{precision if not TENSORRT_RTX_AVAILABLE else 'rtx'}_{engine_min_batch}x{engine_channel}x{engine_min_h}x{engine_min_w}_{engine_opt_batch}x{engine_channel}x{engine_opt_h}x{engine_opt_w}_{engine_max_batch}x{engine_channel}x{engine_max_h}x{engine_max_w}_{trt.__version__}.trt")
+            tensorrt_model_path = os.path.join(tensorrt_models_dir, f"{onnx_model_path.split('/')[-1].split('.')[0]}_{precision if not TENSORRT_RTX_AVAILABLE else 'rtx'}_{engine_min_batch}x{engine_channel}x{engine_min_h}x{engine_min_w}_{engine_opt_batch}x{engine_channel}x{engine_opt_h}x{engine_opt_w}_{engine_max_batch}x{engine_channel}x{engine_max_h}x{engine_max_w}_{trt.__version__}.trt")
 
             if not os.path.exists(tensorrt_model_path):
                 if not os.path.exists(onnx_model_path):
-                    onnx_model_download_url = f"https://huggingface.co/yuvraj108c/ComfyUI-Upscaler-Onnx/resolve/main/{model}.onnx"
+                    onnx_model_download_url = f"https://huggingface.co/yuvraj108c/ComfyUI-Upscaler-Onnx/resolve/main/{onnx_model_path.split('/')[-1].split('.')[0]}.onnx"
                     logger.info(f"Downloading {onnx_model_download_url}")
                     download_file(url=onnx_model_download_url, save_path=onnx_model_path)
                 else:
@@ -95,6 +127,6 @@ class LoadUpscalerTensorrtModel(io.ComfyNode):
             mm.soft_empty_cache()
             engine = Engine(tensorrt_model_path)
             engine.load()
-            engine.model_name = model
+            engine.model_name = onnx_model_path.split('/')[-1].split('.')[0]
 
             return io.NodeOutput(engine)
