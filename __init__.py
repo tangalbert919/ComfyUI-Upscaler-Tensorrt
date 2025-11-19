@@ -6,6 +6,7 @@ from comfy.utils import ProgressBar
 from comfy_api.latest import ComfyExtension, io
 from .trt_utilities import Engine
 from .utilities import download_file, ColoredLogger, get_final_resolutions
+from .scripts.export_onnx import supports_dynamic_shapes_esrgan
 import comfy.model_management as mm
 import time
 import json # <--- Import json module
@@ -472,12 +473,92 @@ class LoadUpscalerTensorrtModel(LoadUpscalerTensorrtModelBase):
         weight_streaming = trt_settings[3] if trt_settings is not None else False
         return io.NodeOutput(super()._load_upscaler_tensorrt_model(model, precision, batch, height, width, weight_streaming))
 
+class LoadUpscalerTensorrtModelLocal(LoadUpscalerTensorrtModelBase):
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        # Use the pre-loaded configuration
+        precision_config = LOAD_UPSCALER_NODE_CONFIG.get("precision", {})
+
+        # Provide sensible defaults if keys are missing in the config (though load_node_config handles this broadly)
+        precision_options = precision_config.get("options", ["fp16", "fp32"])
+        precision_default = precision_config.get("default", "fp16")
+        precision_tooltip = precision_config.get("tooltip", "Select precision.")
+
+        return io.Schema(
+            node_id="LoadUpscalerTensorrtModelLocal",
+            display_name="Convert Upscaler Model to TensorRT",
+            category="TensorRT/upscaler",
+            description="Convert Upscaler Model to TensorRT",
+            inputs=[
+                io.UpscaleModel.Input("upscaler_model"),
+                io.String.Input("filename", default="model"),
+                io.Combo.Input("precision", options=precision_options,
+                               default=precision_default,
+                               tooltip=precision_tooltip),
+                io.Custom("trt_settings").Input("trt_settings", optional=True)
+            ],
+            outputs=[
+                io.Custom("upscaler_trt_model").Output("upscaler_trt_model")
+            ]
+        )
+
+    @classmethod
+    def execute(self, upscaler_model, filename, precision, trt_settings) -> io.NodeOutput:
+        batch = trt_settings[0] if trt_settings is not None else [1, 1, 1]
+        height = trt_settings[1] if trt_settings is not None else [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
+        width = trt_settings[2] if trt_settings is not None else [IMAGE_DIM_MIN, IMAGE_DIM_OPT, IMAGE_DIM_MAX]
+        weight_streaming = trt_settings[3] if trt_settings is not None else False
+
+        # Convert to ONNX first
+        onnx_models_dir = os.path.join(folder_paths.models_dir, "onnx")
+
+        os.makedirs(onnx_models_dir, exist_ok=True)
+
+        onnx_model_path = os.path.join(onnx_models_dir, f"{filename}_{precision}.onnx")
+        if not os.path.exists(onnx_model_path):
+            logger.info(f"Converting model to {filename}_{precision}.onnx")
+            device = mm.get_torch_device()
+            mm.free_memory(mm.module_size(upscaler_model.model), device)
+            upscaler_model.to(device)
+
+            if supports_dynamic_shapes_esrgan(upscaler_model.model, scale=upscaler_model.scale):
+                shape = (1, 3, 64, 64)
+            else:
+                shape = (1, 3, 512, 512)
+            x = torch.rand(*shape).to(device)
+
+            dynamic_axes = {
+                "input": {0: "batch_size", 2: "width", 3: "height"},
+                "output": {0: "batch_size", 2: "width", 3: "height"},
+            }
+
+            if precision == "fp16":
+                x = x.to(dtype=torch.float16)
+                upscaler_model.model.to(dtype=torch.float16)
+
+            with torch.no_grad():
+                torch.onnx.export(
+                    upscaler_model.model,
+                    x,
+                    onnx_model_path,
+                    input_names=['input'],
+                    output_names=['output'],
+                    export_params=True,
+                    dynamic_axes=dynamic_axes,
+                    external_data=False,
+                )
+        else:
+            logger.info("ONNX found, no need to convert")
+        return io.NodeOutput(super()._load_upscaler_tensorrt_model(onnx_model_path.split('/')[-1].split('.')[0],
+                                                                   precision, batch, height, width, weight_streaming))
+
 class UpscalerTensorrtExtension(ComfyExtension):
     async def get_node_list(self) -> list[type[io.ComfyNode]]:
         return [
             UpscalerTensorrt,
             LoadUpscalerTensorrtModel,
             LoadUpscalerTensorrtModelAdvanced,
+            LoadUpscalerTensorrtModelLocal,
             TensorrtSettings
         ]
 
