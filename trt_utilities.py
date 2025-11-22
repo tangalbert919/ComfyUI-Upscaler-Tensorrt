@@ -246,6 +246,8 @@ class Engine:
         config.set_flag(trt.BuilderFlag.REFIT) if enable_refit else None
         config.set_flag(trt.BuilderFlag.WEIGHT_STREAMING) if weight_streaming else None
 
+        config.tiling_optimization_level = trt.TilingOptimizationLevel.MODERATE
+
         profiles = copy.deepcopy(p)
         for profile in profiles:
             # Last profile is used for set_calibration_profile.
