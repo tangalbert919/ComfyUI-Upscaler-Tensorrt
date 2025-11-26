@@ -131,7 +131,7 @@ def get_final_resolutions(width, height, resize_to):
     if aspect_ratio == 1.0:
         final_width = final_height
 
-    if aspect_ratio < 1.0 and resize_to not in ("none", "2x", "3x"):
+    if aspect_ratio < 1.0 and (resize_to not in ("none", "2x", "3x")):
         temp = final_width
         final_width = final_height
         final_height = temp
