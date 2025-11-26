@@ -134,7 +134,7 @@ def get_final_resolutions(width, height, resize_to, scale=4):
     if aspect_ratio == 1.0:
         final_width = final_height
 
-    if aspect_ratio < 1.0 and resize_to not in ("none", "1x", "1.5x", "2x", "2.5x", "3x", "3.5x", "4x", "5x", "6x", "7x", "8x", "9x", "10x"):
+    if aspect_ratio < 1.0 and (resize_to not in ("none", "1x", "1.5x", "2x", "2.5x", "3x", "3.5x", "4x", "5x", "6x", "7x", "8x", "9x", "10x")):
         temp = final_width
         final_width = final_height
         final_height = temp
