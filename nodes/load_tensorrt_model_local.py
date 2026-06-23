@@ -4,7 +4,6 @@ import torch
 from comfy_api.latest import io
 from ..trt_utilities import Engine
 from ..utilities import download_file, logger, LOAD_UPSCALER_NODE_CONFIG
-from ..scripts.export_onnx import supports_dynamic_shapes_esrgan
 import comfy.model_management as mm
 import time
 
@@ -47,6 +46,43 @@ class LoadUpscalerTensorrtModelLocal(io.ComfyNode):
             ]
         )
 
+    # Check dynamic shapes for esrgan 4x model
+    @classmethod
+    def supports_dynamic_shapes_esrgan(self, model, scale=2):
+        input_shapes = [
+        (1, 3, 64, 64),
+        (1, 3, 128, 128),
+        (1, 3, 256, 192),
+        (1, 3, 512, 256),
+        (1, 3, 512, 512)
+        ]
+
+        all_passed = True
+
+        with torch.no_grad():
+            for shape in input_shapes:
+                try:
+                    dummy_input = torch.randn(*shape).cuda()
+                    output = model(dummy_input)
+
+                    expected_h = shape[2] * scale
+                    expected_w = shape[3] * scale
+
+                    assert output.shape[0] == shape[0], "Batch size mismatch"
+                    assert output.shape[1] == shape[1], "Channel mismatch"
+                    assert output.shape[2] == expected_h, f"Height mismatch: expected {expected_h}, got {output.shape[2]}"
+                    assert output.shape[3] == expected_w, f"Width mismatch: expected {expected_w}, got {output.shape[3]}"
+
+                    print(f"Success: input {shape} → output {output.shape}")
+                except Exception as e:
+                    all_passed = False
+                    print(f"Failure: input {shape} → error: {e}")
+                    torch.cuda.empty_cache()
+
+        if all_passed: print(f"Success: Dynamic shapes supported.")
+        if not all_passed: print(f"Failure: Dynamic shapes NOT supported.")
+        return all_passed
+
     @classmethod
     def execute(self, upscaler_model, filename, precision, trt_settings) -> io.NodeOutput:
             batch = trt_settings[0] if trt_settings is not None else [1, 1, 1]
@@ -65,7 +101,7 @@ class LoadUpscalerTensorrtModelLocal(io.ComfyNode):
                 mm.free_memory(mm.module_size(upscaler_model.model), device)
                 upscaler_model.to(device)
 
-                if supports_dynamic_shapes_esrgan(upscaler_model.model, scale=upscaler_model.scale):
+                if self.supports_dynamic_shapes_esrgan(upscaler_model.model, scale=upscaler_model.scale):
                     shape = (1, 3, 64, 64)
                 else:
                     shape = (1, 3, 512, 512)

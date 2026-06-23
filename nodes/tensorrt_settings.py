@@ -1,4 +1,5 @@
 from comfy_api.latest import io
+from ..utilities import LOAD_UPSCALER_NODE_CONFIG
 
 IMAGE_DIM_MIN = LOAD_UPSCALER_NODE_CONFIG.get("IMAGE_DIM_MIN")
 IMAGE_DIM_OPT = LOAD_UPSCALER_NODE_CONFIG.get("IMAGE_DIM_OPT")
