@@ -126,6 +126,7 @@ class LoadUpscalerTensorrtModelLocal(io.ComfyNode):
                         export_params=True,
                         dynamic_axes=dynamic_axes,
                         external_data=False,
+                        dynamo=False
                     )
             else:
                 logger.info("ONNX found, no need to convert")
@@ -164,5 +165,6 @@ class LoadUpscalerTensorrtModelLocal(io.ComfyNode):
             engine = Engine(tensorrt_model_path)
             engine.load()
             engine.model_name = onnx_model_path.split('/')[-1].split('.')[0]
+            engine.local_model_scale = upscaler_model.scale
 
             return io.NodeOutput(engine)

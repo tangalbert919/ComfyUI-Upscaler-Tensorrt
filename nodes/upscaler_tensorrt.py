@@ -44,7 +44,9 @@ class UpscalerTensorrt(io.ComfyNode):
 
         model_name = getattr(upscaler_trt_model, "model_name", None)
 
-        scale = get_model_scale(model_name)
+        scale = getattr(upscaler_trt_model, "local_model_scale", None)
+        if scale is None:
+            scale = get_model_scale(model_name)
 
         images_bchw = images.permute(0, 3, 1, 2)
         B, C, H, W = images_bchw.shape
